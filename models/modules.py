@@ -324,6 +324,105 @@ class AltBlock(nn.Module):
         return x, t
 
 
+class LightweightConvAttentionBlock(nn.Module):
+    """Lightweight asymmetric block for audio tokens.
+
+    Structure: depthwise-separable 1D conv (local) + MHSA (global) + MLP.
+    """
+
+    def __init__(
+        self,
+        dim,
+        num_heads,
+        conv_kernel_size=5,
+        mlp_ratio=2.0,
+        qkv_bias=False,
+        qk_scale=None,
+        drop=0.0,
+        attn_drop=0.0,
+        mlp_drop=0.0,
+        post_mlp_drop=0.0,
+        drop_path=0.0,
+        act_layer=nn.GELU,
+        norm_layer=nn.LayerNorm,
+        layer_norm_first=True,
+        ffn_targets=False,
+        cosine_attention=False,
+    ):
+        super().__init__()
+
+        self.layer_norm_first = layer_norm_first
+        self.ffn_targets = ffn_targets
+
+        from timm.models.vision_transformer import DropPath, Mlp
+
+        self.norm_local = norm_layer(dim)
+        self.dw_conv = nn.Conv1d(
+            dim,
+            dim,
+            kernel_size=conv_kernel_size,
+            padding=conv_kernel_size // 2,
+            groups=dim,
+        )
+        self.pw_conv = nn.Conv1d(dim, dim, kernel_size=1)
+        self.local_act = act_layer()
+        self.local_drop = nn.Dropout(drop, inplace=False)
+
+        self.norm1 = norm_layer(dim)
+        self.attn = AltAttention(
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+            cosine_attention=cosine_attention,
+        )
+
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.norm2 = norm_layer(dim)
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp = Mlp(
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=mlp_drop,
+        )
+        self.post_mlp_dropout = nn.Dropout(post_mlp_drop, inplace=False)
+
+    def _local_branch(self, x):
+        r = x
+        x = self.norm_local(x)
+        x = x.transpose(1, 2)
+        x = self.dw_conv(x)
+        x = self.pw_conv(x)
+        x = x.transpose(1, 2)
+        x = self.local_act(x)
+        x = self.local_drop(x)
+        return r + self.drop_path(x)
+
+    def forward(self, x, padding_mask=None, alibi_bias=None):
+        if self.layer_norm_first:
+            x = self._local_branch(x)
+            x = x + self.drop_path(self.attn(self.norm1(x), padding_mask, alibi_bias))
+            r = x = self.mlp(self.norm2(x))
+            t = x
+            x = r + self.drop_path(self.post_mlp_dropout(x))
+            if not self.ffn_targets:
+                t = x
+        else:
+            x = self._local_branch(x)
+            x = x + self.drop_path(self.attn(x, padding_mask, alibi_bias))
+            r = x = self.norm1(x)
+            x = self.mlp(x)
+            t = x
+            x = self.norm2(r + self.drop_path(self.post_mlp_dropout(x)))
+            if not self.ffn_targets:
+                t = x
+
+        return x, t
+
+
 class AltAttention(nn.Module):
     def __init__(
         self,
