@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+
+GPU_ID="${1:-0}"
+BATCH_SIZE="${2:-16}"
+UPDATE_FREQ="${3:-2}"
+EAT_ROOT="/hy-tmp/eat_work/EAT"
+FAIRSEQ_ROOT="/hy-tmp/eat_work/fairseq"
+
+export CUDA_VISIBLE_DEVICES="${GPU_ID}"
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-max_split_size_mb:128}"
+
+cd "${FAIRSEQ_ROOT}"
+python fairseq_cli/hydra_train.py \
+  --config-dir "${EAT_ROOT}/config" \
+  --config-name finetuning_shipsear_light \
+  common.user_dir="${EAT_ROOT}" \
+  checkpoint.save_dir=/hy-tmp/exp/eat/runs/shipsear_light_finetune \
+  dataset.batch_size="${BATCH_SIZE}" \
+  optimization.update_freq="[${UPDATE_FREQ}]" \
+  task.data=/hy-tmp/exp/eat/manifests/shipsear

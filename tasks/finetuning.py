@@ -57,11 +57,18 @@ class MaeImageClassificationTask(MaeImagePretrainingTask):
         path = os.path.join(self.cfg.data, self.cfg.label_descriptors)
         with open(path, "r") as ldf:
             for line in ldf:
-                if line.strip() == "":
+                line = line.strip()
+                if line == "":
                     continue
-                items = line.split(",")
-                idx = items[0]
-                lbl = items[1]
+                items = [x.strip() for x in line.split(",")]
+                if len(items) < 2:
+                    logger.warning(f"invalid label descriptor row (skip): {line}")
+                    continue
+
+                idx_raw, lbl = items[0], items[1]
+                # canonical format is "<int_id>,<label_name>".
+                # for robustness, if id is not int-like we fall back to row order.
+                idx = idx_raw if idx_raw.isdigit() else str(len(labels))
                 assert lbl not in labels, lbl
                 labels[lbl] = idx
         return labels
@@ -95,7 +102,13 @@ class MaeImageClassificationTask(MaeImagePretrainingTask):
             for i, line in enumerate(f):
                 if i not in skipped_indices:
                     lbl_items = line.rstrip().split()
-                    labels.append([self.state.labels[x] for x in lbl_items[1].split(",")])
+                    if len(lbl_items) < 2:
+                        raise ValueError(
+                            f"invalid label row in {label_path}: `{line.rstrip()}` "
+                            "expect `<sample_id> <label[,label2,...]>`"
+                        )
+                    label_tokens = [x.strip() for x in lbl_items[1].split(",") if x.strip()]
+                    labels.append([self.state.labels[x] for x in label_tokens])
 
         assert len(labels) == len(self.datasets[split]), (
             f"labels length ({len(labels)}) and dataset length "
