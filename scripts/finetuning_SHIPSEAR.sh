@@ -2,9 +2,12 @@
 set -euo pipefail
 
 # Usage (example):
-#   bash scripts/finetuning_SHIPSEAR.sh 0
+#   bash scripts/finetuning_SHIPSEAR.sh 0 8 6
+# args: GPU_ID BATCH_SIZE UPDATE_FREQ
 
 GPU_ID="${1:-0}"
+BATCH_SIZE="${2:-8}"
+UPDATE_FREQ="${3:-6}"
 
 EAT_ROOT="/hy-tmp/eat_work/EAT"
 FAIRSEQ_ROOT="/hy-tmp/eat_work/fairseq"
@@ -15,6 +18,7 @@ PRETRAIN_CKPT="/hy-tmp/model_zoo/eat_checkpoints/EAT-base_epoch30_pt.pt"
 mkdir -p "${RUN_ROOT}"
 
 export CUDA_VISIBLE_DEVICES="${GPU_ID}"
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-max_split_size_mb:128}"
 
 cd "${FAIRSEQ_ROOT}"
 python fairseq_cli/hydra_train.py \
@@ -28,7 +32,8 @@ python fairseq_cli/hydra_train.py \
     checkpoint.maximize_best_checkpoint_metric=true \
     dataset.train_subset=train \
     dataset.valid_subset=valid \
-    dataset.batch_size=48 \
+    dataset.batch_size="${BATCH_SIZE}" \
+    optimization.update_freq="[${UPDATE_FREQ}]" \
     criterion.log_keys=['correct'] \
     task.data="${MANIFEST_DIR}" \
     task.audio_mae=true \
