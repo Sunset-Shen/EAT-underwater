@@ -17,17 +17,23 @@ def count_trainable_params(model):
 
 def run_latency(model, device, batch_size, target_length, num_warmup, num_iters):
     x = torch.randn(batch_size, 1, target_length, 128, device=device)
-    net_input = {"source": x}
+    
+    def _forward_once(inp):
+        try:
+            return model(inp)
+        except TypeError:
+            # fallback for fairseq-style models expecting named source arg
+            return model(source=inp)
 
     model.eval()
     with torch.inference_mode():
         for _ in range(num_warmup):
-            _ = model(**net_input)
+            _ = _forward_once(x)
         if device.type == "cuda":
             torch.cuda.synchronize()
         t0 = time.time()
         for _ in range(num_iters):
-            _ = model(**net_input)
+            _ = _forward_once(x)
         if device.type == "cuda":
             torch.cuda.synchronize()
         dt = time.time() - t0
@@ -42,9 +48,9 @@ def maybe_flops(model, batch_size, target_length, device):
         return None
 
     x = torch.randn(batch_size, 1, target_length, 128, device=device)
-    net_input = {"source": x}
+    input_tuple = (x,)
     with torch.inference_mode():
-        flops = FlopCountAnalysis(model, net_input).total()
+        flops = FlopCountAnalysis(model, input_tuple).total()
     return flops
 
 
