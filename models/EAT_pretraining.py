@@ -30,6 +30,7 @@ from .base import (
 from .modules import (
     D2vDecoderConfig,
     AltBlock,
+    LightweightConvAttentionBlock,
     Decoder1d,
 )
 
@@ -151,6 +152,24 @@ class Data2VecMultiConfig(FairseqDataclass):
     center_exp: float = field(default=0.9, metadata={"help": "this value control the exponent decay of center value's coefficient"})
     softmax_temperature_student: float = field(default=0.1, metadata={"help": "this value control the temperature of softmax function of student output in the dino loss"})
     softmax_temperature_teacher: float = field(default=0.05, metadata={"help": "this value control the temperature of softmax function in teacher output the dino loss"})
+    
+    # backbone variant for lightweight experiments
+    backbone_variant: str = field(
+        default="baseline",
+        metadata={"help": "baseline|lightweight"},
+    )
+    light_conv_kernel: int = field(
+        default=5,
+        metadata={"help": "depthwise conv kernel size for lightweight backbone"},
+    )
+    light_mlp_ratio: float = field(
+        default=2.0,
+        metadata={"help": "mlp ratio for lightweight backbone"},
+    )
+    light_num_heads: int = field(
+        default=8,
+        metadata={"help": "attention heads used by lightweight backbone"},
+    )
 
 
 @register_model("data2vec_multi", dataclass=Data2VecMultiConfig)
@@ -191,9 +210,31 @@ class Data2VecMultiModel(BaseFairseqModel):
         )
 
         def make_block(drop_path, dim=None, heads=None):
+            block_dim = cfg.embed_dim if dim is None else dim
+            block_heads = cfg.num_heads if heads is None else heads
+            if cfg.backbone_variant == "lightweight":
+                block_heads = min(block_heads, cfg.light_num_heads)
+                while block_dim % block_heads != 0 and block_heads > 1:
+                    block_heads -= 1
+                return LightweightConvAttentionBlock(
+                    block_dim,
+                    block_heads,
+                    conv_kernel_size=cfg.light_conv_kernel,
+                    mlp_ratio=cfg.light_mlp_ratio,
+                    qkv_bias=True,
+                    drop=cfg.encoder_dropout,
+                    attn_drop=cfg.attention_dropout,
+                    mlp_drop=cfg.activation_dropout,
+                    post_mlp_drop=cfg.post_mlp_drop,
+                    drop_path=drop_path,
+                    norm_layer=make_layer_norm,
+                    layer_norm_first=cfg.layer_norm_first,
+                    ffn_targets=not cfg.end_of_block_targets,
+                )
+
             return AltBlock(
-                cfg.embed_dim if dim is None else dim,
-                cfg.num_heads if heads is None else heads,
+                block_dim,
+                block_heads,
                 cfg.mlp_ratio,
                 qkv_bias=True,
                 drop=cfg.encoder_dropout,
