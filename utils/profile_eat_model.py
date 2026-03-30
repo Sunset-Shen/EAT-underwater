@@ -4,6 +4,7 @@
 import argparse
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 try:
     import torch
@@ -60,7 +61,7 @@ def main():
         raise RuntimeError("This script requires torch runtime environment.")
 
     try:
-        from fairseq import checkpoint_utils
+        from fairseq import checkpoint_utils, utils as fairseq_utils
     except Exception as exc:
         raise RuntimeError(
             "This script requires fairseq runtime environment."
@@ -68,6 +69,21 @@ def main():
 
     if not args.checkpoint.exists():
         raise FileNotFoundError(args.checkpoint)
+
+    # Ensure custom EAT task/model registry is available when loading checkpoint.
+    state = checkpoint_utils.load_checkpoint_to_cpu(str(args.checkpoint), {})
+    saved_cfg = state.get("cfg", None)
+    if saved_cfg is None:
+        raise RuntimeError(f"Checkpoint missing cfg: {args.checkpoint}")
+
+    user_dir = None
+    common_cfg = getattr(saved_cfg, "common", None)
+    if common_cfg is not None:
+        user_dir = getattr(common_cfg, "user_dir", None)
+    if not user_dir:
+        # fallback: current script under <EAT>/utils/profile_eat_model.py
+        user_dir = str(Path(__file__).resolve().parents[1])
+    fairseq_utils.import_user_module(SimpleNamespace(user_dir=user_dir))
 
     models, saved_cfg, _ = checkpoint_utils.load_model_ensemble_and_task(
         [str(args.checkpoint)],
