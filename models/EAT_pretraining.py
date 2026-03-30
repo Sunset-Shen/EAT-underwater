@@ -170,6 +170,14 @@ class Data2VecMultiConfig(FairseqDataclass):
         default=8,
         metadata={"help": "attention heads used by lightweight backbone"},
     )
+    physical_loss_weight: float = field(
+        default=0.0,
+        metadata={"help": "UT-EAT physical loss weight"},
+    )
+    physical_num_bands: int = field(
+        default=4,
+        metadata={"help": "UT-EAT coarse band count"},
+    )
 
 
 @register_model("data2vec_multi", dataclass=Data2VecMultiConfig)
@@ -212,7 +220,7 @@ class Data2VecMultiModel(BaseFairseqModel):
         def make_block(drop_path, dim=None, heads=None):
             block_dim = cfg.embed_dim if dim is None else dim
             block_heads = cfg.num_heads if heads is None else heads
-            if cfg.backbone_variant == "lightweight":
+            if cfg.backbone_variant in {"lightweight", "uteat"}:
                 block_heads = min(block_heads, cfg.light_num_heads)
                 while block_dim % block_heads != 0 and block_heads > 1:
                     block_heads -= 1
@@ -303,8 +311,11 @@ class Data2VecMultiModel(BaseFairseqModel):
                 self.shared_decoder.apply(self._init_weights)
 
             self.recon_proj = None
-            if cfg.recon_loss > 0:
-                self.recon_proj = nn.Linear(cfg.embed_dim, cfg.embed_dim//3)
+            if cfg.recon_loss > 0 or cfg.physical_loss_weight > 0:
+                patch_size = cfg.modalities.image.patch_size
+                in_chans = cfg.modalities.image.in_chans
+                patch_dim = patch_size * patch_size * in_chans
+                self.recon_proj = nn.Linear(cfg.embed_dim, patch_dim)
                 
             self.cls_proj = None
             if cfg.utterance_level:
@@ -719,7 +730,8 @@ class Data2VecMultiModel(BaseFairseqModel):
             
             self.center = self.center_exp * self.center + (1 - self.center_exp) * (cls_target.mean(dim=0))
             
-        if self.cfg.recon_loss > 0:
+        target = None
+        if self.cfg.recon_loss > 0 or self.cfg.physical_loss_weight > 0:
 
             with torch.no_grad():
                 target = feature_extractor.patchify(source)  #(btz,1,512,16*16)
@@ -737,9 +749,19 @@ class Data2VecMultiModel(BaseFairseqModel):
             if self.recon_proj is not None:
                 recon = self.recon_proj(recon)
 
-            result["losses"]["recon"] = (
-                self.d2v_loss(recon, target.float()) * self.cfg.recon_loss
-            )
+            if self.cfg.recon_loss > 0:
+                result["losses"]["recon"] = (
+                    self.d2v_loss(recon, target.float()) * self.cfg.recon_loss
+                )
+            if self.cfg.physical_loss_weight > 0:
+                physical = self.physical_band_loss(
+                    recon.float(),
+                    target.float(),
+                    bands=self.cfg.physical_num_bands,
+                )
+                result["losses"]["physical"] = (
+                    physical * self.cfg.physical_loss_weight * sample_size
+                )
 
         if self.cfg.d2v_loss > 0:
             for i, x in enumerate(xs):
@@ -821,6 +843,17 @@ class Data2VecMultiModel(BaseFairseqModel):
         s = F.softmax(s/self.soft_tem_s,dim=1)
         t = F.softmax((t-self.center)/self.soft_tem_t,dim=1)
         return - (t * torch.log(s)).sum(dim=1).mean()
+
+    def physical_band_loss(self, pred, target, bands=4):
+        """UT-EAT v1: coarse band-energy consistency on masked patch targets."""
+        def summarize(x):
+            b = max(1, min(bands, x.size(-1)))
+            chunks = torch.chunk(x.abs(), b, dim=-1)
+            return torch.stack([c.mean(dim=-1) for c in chunks], dim=-1)
+
+        pred_s = summarize(pred)
+        target_s = summarize(target)
+        return F.mse_loss(pred_s, target_s, reduction="mean")
     
     # average top-k layers output from teacher model
     def make_targets(self, y, num_layers):
