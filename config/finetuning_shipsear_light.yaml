@@ -38,7 +38,7 @@ dataset:
   skip_invalid_size_inputs_valid_test: true
   required_batch_size_multiple: 2
   train_subset: train
-  valid_subset: valid,test
+  valid_subset: valid
 
 distributed_training:
   distributed_world_size: 1

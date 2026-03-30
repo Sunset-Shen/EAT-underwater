@@ -8,7 +8,7 @@ FAIRSEQ_ROOT="/hy-tmp/eat_work/fairseq"
 export CUDA_VISIBLE_DEVICES="${GPU_ID}"
 
 cd "${FAIRSEQ_ROOT}"
-python fairseq_cli/hydra_train.py -m \
+python fairseq_cli/hydra_train.py \
   --config-dir "${EAT_ROOT}/config" \
   --config-name pretraining_shipsear_light \
   common.user_dir="${EAT_ROOT}" \

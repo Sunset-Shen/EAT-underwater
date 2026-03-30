@@ -11,7 +11,6 @@ Output files (under output dir):
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import random
 import wave
@@ -142,10 +141,13 @@ def write_lbl(path: Path, samples: Sequence[Sample]) -> None:
 
 def write_label_descriptors(path: Path, classes: Sequence[str]) -> Dict[str, int]:
     mapping = {cls: i for i, cls in enumerate(classes)}
-    with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.writer(f)
+    with path.open("w", encoding="utf-8") as f:
         for cls, idx in mapping.items():
-            writer.writerow([idx, cls])
+            if "," in cls:
+                raise ValueError(
+                    f"Class name contains comma which breaks csv parsing: {cls}"
+                )
+            f.write(f"{idx},{cls}\n")
     return mapping
 
 

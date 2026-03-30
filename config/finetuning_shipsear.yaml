@@ -38,7 +38,7 @@ dataset:
   skip_invalid_size_inputs_valid_test: true
   required_batch_size_multiple: 2
   train_subset: train
-  valid_subset: valid,test
+  valid_subset: valid
 
 distributed_training:
   distributed_world_size: 1
@@ -74,7 +74,7 @@ model:
   _name: mae_image_classification
   mixup: 0.0
   mixup_prob: 0.0
-  model_path: /hy-tmp/model_zoo/eat_checkpoints/checkpoint10.pt
+  model_path: /hy-tmp/model_zoo/eat_checkpoints/EAT-base_epoch30_pt.pt
   audio_mae: true
   num_classes: 12
   specaug: true

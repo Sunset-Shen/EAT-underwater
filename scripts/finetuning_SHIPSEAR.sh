@@ -10,14 +10,14 @@ EAT_ROOT="/hy-tmp/eat_work/EAT"
 FAIRSEQ_ROOT="/hy-tmp/eat_work/fairseq"
 MANIFEST_DIR="/hy-tmp/exp/eat/manifests/shipsear"
 RUN_ROOT="/hy-tmp/exp/eat/runs/shipsear_baseline"
-PRETRAIN_CKPT="/hy-tmp/model_zoo/eat_checkpoints/checkpoint10.pt"
+PRETRAIN_CKPT="/hy-tmp/model_zoo/eat_checkpoints/EAT-base_epoch30_pt.pt"
 
 mkdir -p "${RUN_ROOT}"
 
 export CUDA_VISIBLE_DEVICES="${GPU_ID}"
 
 cd "${FAIRSEQ_ROOT}"
-python fairseq_cli/hydra_train.py -m \
+python fairseq_cli/hydra_train.py \
     --config-dir "${EAT_ROOT}/config" \
     --config-name finetuning_shipsear \
     common.user_dir="${EAT_ROOT}" \
@@ -27,7 +27,7 @@ python fairseq_cli/hydra_train.py -m \
     checkpoint.best_checkpoint_metric=accuracy \
     checkpoint.maximize_best_checkpoint_metric=true \
     dataset.train_subset=train \
-    dataset.valid_subset=valid,test \
+    dataset.valid_subset=valid \
     dataset.batch_size=48 \
     criterion.log_keys=['correct'] \
     task.data="${MANIFEST_DIR}" \
