@@ -1,0 +1,20 @@
+# @package _group_
+
+defaults:
+  - finetuning_shipsear
+
+common:
+  tensorboard_logdir: /hy-tmp/exp/eat/logs/shipsear_uteat_finetune/tb
+
+checkpoint:
+  save_dir: /hy-tmp/exp/eat/runs/shipsear_uteat
+
+model:
+  model_path: /hy-tmp/exp/eat/runs/shipsear_uteat_pretrain/checkpoint_last.pt
+  num_classes: 12
+
+dataset:
+  batch_size: 8
+
+optimization:
+  update_freq: [6]
