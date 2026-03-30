@@ -27,13 +27,23 @@
 - 位置：`models/EAT_pretraining.py`
 
 ## 3) 训练入口
-- ShipsEar 预训练：`scripts/pretraining_SHIPSEAR_UTEAT.sh`
-- DeepShip 预训练：`scripts/pretraining_DEEPSHIP_UTEAT.sh`
+- ShipsEar 预训练 smoke：`scripts/pretraining_SHIPSEAR_UTEAT_SMOKE.sh`（max_update=100）
+- ShipsEar 预训练 formal：`scripts/pretraining_SHIPSEAR_UTEAT_FORMAL.sh`（max_update=10000）
+- DeepShip 预训练 smoke：`scripts/pretraining_DEEPSHIP_UTEAT_SMOKE.sh`（max_update=100）
+- DeepShip 预训练 formal：`scripts/pretraining_DEEPSHIP_UTEAT_FORMAL.sh`（max_update=10000）
 - ShipsEar 微调：`scripts/finetuning_SHIPSEAR_UTEAT.sh`
 - DeepShip 微调：`scripts/finetuning_DEEPSHIP_UTEAT.sh`
 
 ## 4) profile
 - 直接复用：`utils/profile_eat_model.py`
+
+## 4.1) 自动导出论文可用结果
+- 新增：`utils/export_run_artifacts.py`
+- 每次 smoke/formal 预训练脚本结束后自动导出：
+  - `run_summary.json`
+  - `curves.jsonl`
+  - `curves.csv`
+- 导出位置：对应 run 目录（如 `shipsear_uteat_smoke_pretrain`）
 
 ## 5) 对比实验建议
 1. Baseline EAT (ShipsEar/DeepShip)
