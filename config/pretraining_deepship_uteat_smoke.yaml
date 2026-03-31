@@ -1,0 +1,19 @@
+# @package _group_
+
+defaults:
+  - pretraining_shipsear_uteat
+
+common:
+  tensorboard_logdir: /hy-tmp/exp/eat/logs/deepship_uteat_smoke_pretrain/tb
+
+checkpoint:
+  save_dir: /hy-tmp/exp/eat/runs/deepship_uteat_smoke_pretrain
+
+task:
+  data: /hy-tmp/exp/eat/manifests/deepship
+
+dataset:
+  disable_validation: false
+
+optimization:
+  max_update: 100

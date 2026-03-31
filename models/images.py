@@ -57,6 +57,9 @@ class D2vImageConfig(D2vModalityConfig):
     enc_dec_transformer: bool = False
     target_length: int = 1024
     max_length: int = 768
+    mask_strategy: str = "baseline"
+    low_freq_ratio: float = 0.3
+    low_freq_mask_prob_mult: float = 1.3
 
 class ImageEncoder(ModalitySpecificEncoder):
 
@@ -260,6 +263,8 @@ class ImageEncoder(ModalitySpecificEncoder):
                 mask_dropout=self.modality_cfg.mask_dropout,
                 img_shape=self.hw
             )
+            if self.modality_cfg.mask_strategy == "uteat_phys":
+                mask = self._apply_physically_guided_mask(mask, B)
             
 
         mask_info = self.make_maskinfo(x, mask, shape)
@@ -267,6 +272,24 @@ class ImageEncoder(ModalitySpecificEncoder):
             x = self.apply_mask(x, mask_info)
 
         return x, mask_info
+
+    def _apply_physically_guided_mask(self, mask, batch_size):
+        """UT-EAT v1: increase low-frequency masking with rule-based prior."""
+        h, w = self.hw
+        low_h = max(1, int(h * self.modality_cfg.low_freq_ratio))
+        mask_2d = mask.reshape(batch_size, h, w)
+
+        low_freq = mask_2d[:, :low_h, :]
+        extra_prob = (
+            min(1.0, self.modality_cfg.mask_prob * self.modality_cfg.low_freq_mask_prob_mult)
+            - self.modality_cfg.mask_prob
+        )
+        if extra_prob > 0:
+            extra = (torch.rand_like(low_freq.float()) < extra_prob).to(mask_2d.dtype)
+            low_freq = torch.maximum(low_freq, extra)
+            mask_2d[:, :low_h, :] = low_freq
+
+        return mask_2d.reshape(batch_size, h * w)
 
     def decoder_input(self, x, mask_info):
         if (
