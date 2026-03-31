@@ -2,6 +2,7 @@
 
 defaults:
   - finetuning_shipsear
+  - _self_
 
 common:
   tensorboard_logdir: /hy-tmp/exp/eat/logs/shipsear_uteat_finetune/tb
@@ -10,7 +11,7 @@ checkpoint:
   save_dir: /hy-tmp/exp/eat/runs/shipsear_uteat
 
 model:
-  model_path: /hy-tmp/exp/eat/runs/shipsear_uteat_pretrain/checkpoint_last.pt
+  model_path: /hy-tmp/exp/eat/runs/shipsear_uteat_formal_pretrain/checkpoint_last.pt
   num_classes: 12
 
 dataset:
