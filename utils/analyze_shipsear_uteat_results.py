@@ -9,7 +9,6 @@ import struct
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 PRETRAIN_COLUMNS = [
     "loss",
@@ -24,14 +23,6 @@ PRETRAIN_COLUMNS = [
 ]
 
 
-@dataclass
-class RunPaths:
-    baseline_finetune: Path
-    uteat_smoke_pretrain: Path
-    uteat_formal_pretrain: Path
-    uteat_finetune: Path
-
-
 def _to_float(v):
     try:
         if v is None or v == "":
@@ -41,10 +32,32 @@ def _to_float(v):
         return None
 
 
-def _read_jsonl(path: Path) -> list[dict]:
-    rows = []
+def _to_int(v):
+    f = _to_float(v)
+    return int(f) if f is not None else None
+
+
+@dataclass
+class RunPaths:
+    baseline_finetune: Path
+    uteat_smoke_pretrain: Path
+    uteat_formal_pretrain: Path
+    uteat_finetune: Path
+
+
+def _read_json(path: Path):
     if not path.exists():
-        return rows
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+    except json.JSONDecodeError:
+        return None
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    rows = []
     for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = line.strip()
         if not line:
@@ -63,95 +76,233 @@ def _read_csv(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+def _kv_extract(line: str, key: str):
+    # supports: valid_accuracy=98.0 / valid_accuracy: 98.0 / valid_accuracy 98.0
+    m = re.search(rf"{re.escape(key)}\s*(?:=|:)\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", line)
+    return _to_float(m.group(1)) if m else None
+
+
+def _parse_log_payload(line: str):
+    if "{" in line and "}" in line:
+        payload = line[line.find("{") : line.rfind("}") + 1]
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError:
+            pass
+
+    keys = [
+        "valid_accuracy",
+        "valid_best_accuracy",
+        "valid_num_updates",
+        "num_updates",
+        "train_num_updates",
+        "loss",
+        "train_loss",
+        "loss_cls",
+        "loss_recon",
+        "loss_physical",
+        "loss_IMAGE_regression",
+        "target_var",
+        "pred_var",
+        "masked_pct",
+    ]
+    out = {}
+    for k in keys:
+        v = _kv_extract(line, k)
+        if v is not None:
+            out[k] = v
+    return out if out else None
+
+
 def _extract_train_log_rows(log_path: Path) -> list[dict]:
     if not log_path.exists():
         return []
     rows = []
     for line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = line.strip()
-        if "{" not in line or "}" not in line:
+        if not line:
             continue
-        payload = line[line.find("{") : line.rfind("}") + 1]
-        try:
-            obj = json.loads(payload)
-        except json.JSONDecodeError:
-            continue
-        rows.append(obj)
+        payload = _parse_log_payload(line)
+        if payload:
+            rows.append(payload)
     return rows
 
 
 def _normalize_pretrain_rows(rows: list[dict]) -> list[dict]:
     out = []
     for row in rows:
-        norm = {}
-        norm["num_updates"] = row.get("num_updates", row.get("train_num_updates"))
-        norm["loss"] = row.get("loss", row.get("train_loss"))
-        for col in PRETRAIN_COLUMNS:
-            if col not in norm:
-                norm[col] = row.get(col)
+        norm = {c: row.get(c) for c in PRETRAIN_COLUMNS}
+        norm["num_updates"] = row.get("num_updates", row.get("train_num_updates", row.get("valid_num_updates")))
+        norm["loss"] = row.get("loss", row.get("train_loss", row.get("valid_loss")))
         out.append(norm)
     return out
 
 
-def _read_curves(run_dir: Path) -> list[dict]:
-    for reader in [lambda: _read_csv(run_dir / "curves.csv"), lambda: _read_jsonl(run_dir / "curves.jsonl"), lambda: _extract_train_log_rows(run_dir / "train.log")]:
-        rows = reader()
+def _select_structured_rows(run_dir: Path, source_trace: list[str]) -> tuple[list[dict], str]:
+    candidates = [
+        (run_dir / "curves.csv", _read_csv),
+        (run_dir / "curves.jsonl", _read_jsonl),
+        (run_dir / "train.log", _extract_train_log_rows),
+    ]
+    for path, reader in candidates:
+        rows = reader(path)
         if rows:
-            return _normalize_pretrain_rows(rows)
+            source_trace.append(f"pretrain rows from {path}")
+            return _normalize_pretrain_rows(rows), str(path)
+    source_trace.append(f"pretrain rows missing for {run_dir}")
+    return [], ""
+
+
+def _read_pretrain_rows(run_name: str, run_dir: Path, source_trace: list[str]) -> list[dict]:
+    rows, _ = _select_structured_rows(run_dir, source_trace)
+    cleaned = []
+    excluded = 0
+    for r in rows:
+        u = _to_int(r.get("num_updates"))
+        if run_name == "smoke" and u is not None and u > 100:
+            excluded += 1
+            continue
+        rr = {"run": run_name}
+        for c in PRETRAIN_COLUMNS:
+            rr[c] = r.get(c, "")
+        cleaned.append(rr)
+    if excluded:
+        source_trace.append(f"excluded {excluded} smoke rows with num_updates>100")
+    return cleaned
+
+
+def _accuracy_rows_from_structured(run_dir: Path, source_trace: list[str]) -> list[dict]:
+    for path, reader in [
+        (run_dir / "curves.csv", _read_csv),
+        (run_dir / "curves.jsonl", _read_jsonl),
+        (run_dir / "train.log", _extract_train_log_rows),
+    ]:
+        rows = reader(path)
+        valid = []
+        for r in rows:
+            acc = _to_float(r.get("valid_accuracy"))
+            if acc is None:
+                continue
+            update = (
+                _to_int(r.get("valid_num_updates"))
+                or _to_int(r.get("num_updates"))
+                or _to_int(r.get("train_num_updates"))
+            )
+            valid.append({"valid_accuracy": acc, "update": update, "valid_best_accuracy": _to_float(r.get("valid_best_accuracy"))})
+        if valid:
+            source_trace.append(f"finetune accuracy rows from {path}")
+            return valid
+    source_trace.append(f"finetune accuracy rows missing for {run_dir}")
     return []
 
 
-def _find_best_accuracy(log_path: Path):
-    best = None
+def _find_finetune_summary(run_dir: Path, source_trace: list[str]):
+    run_summary = _read_json(run_dir / "run_summary.json") or {}
+    best_from_summary = _to_float(run_summary.get("best_valid_accuracy"))
+    best_update_from_summary = _to_int(run_summary.get("best_valid_update"))
+    if run_summary:
+        source_trace.append(f"used run_summary: {run_dir / 'run_summary.json'}")
+
+    acc_rows = _accuracy_rows_from_structured(run_dir, source_trace)
+    best = best_from_summary
     final = None
     final_update = None
-    for obj in _extract_train_log_rows(log_path):
-        valid_acc = _to_float(obj.get("valid_accuracy"))
-        if valid_acc is not None:
-            final = valid_acc
-            u = obj.get("num_updates")
-            if u is not None:
-                try:
-                    final_update = int(u)
-                except (TypeError, ValueError):
-                    pass
-            best = valid_acc if best is None else max(best, valid_acc)
-        best_acc = _to_float(obj.get("valid_best_accuracy"))
-        if best_acc is not None:
-            best = best_acc if best is None else max(best, best_acc)
-    return best, final, final_update
+    best_update = best_update_from_summary
+
+    if acc_rows:
+        final_row = max(acc_rows, key=lambda x: (-1 if x["update"] is None else x["update"]))
+        final = final_row["valid_accuracy"]
+        final_update = final_row["update"]
+
+        for r in acc_rows:
+            cand = r["valid_best_accuracy"] if r["valid_best_accuracy"] is not None else r["valid_accuracy"]
+            if cand is None:
+                continue
+            if best is None or cand > best:
+                best = cand
+                best_update = r["update"]
+
+    best_ckpt = run_summary.get("best_checkpoint") or str(run_dir / "checkpoint_best.pt")
+    last_ckpt = run_summary.get("last_checkpoint") or str(run_dir / "checkpoint_last.pt")
+
+    if not Path(best_ckpt).exists():
+        best_ckpt = ""
+    if not Path(last_ckpt).exists():
+        last_ckpt = ""
+
+    return {
+        "best": best,
+        "final": final,
+        "final_update": final_update,
+        "best_update": best_update,
+        "best_ckpt": best_ckpt,
+        "last_ckpt": last_ckpt,
+    }
 
 
-def _checkpoint_size_mb(ckpt: Path):
-    return ckpt.stat().st_size / (1024 * 1024) if ckpt.exists() else None
+def _parse_profile_metrics(run_dir: Path, source_trace: list[str]):
+    metrics = {"Params": None, "LatencyMs": None, "FLOPs": None, "Checkpoint Size MB": None}
 
+    json_candidates = [run_dir / "profile.json", run_dir / "profile_metrics.json", run_dir / "run_summary.json"]
+    text_candidates = [run_dir / "profile.txt", run_dir / "profile.log"]
 
-def _parse_profile_metrics(run_dir: Path):
-    metrics = {"Params": None, "LatencyMs": None, "FLOPs": None}
-    for p in [run_dir / "profile.json", run_dir / "profile_metrics.json", run_dir / "run_summary.json"]:
+    for p in json_candidates:
+        obj = _read_json(p)
+        if not isinstance(obj, dict):
+            continue
+        source_trace.append(f"profile json from {p}")
+        metrics["Params"] = _to_float(obj.get("trainable_params") or obj.get("params") or metrics["Params"])
+        lat = _to_float(obj.get("latency_ms") or obj.get("latency") or obj.get("latency_sec_per_iter"))
+        if lat is not None:
+            if obj.get("latency_sec_per_iter") is not None:
+                lat *= 1000.0
+            metrics["LatencyMs"] = lat
+        metrics["FLOPs"] = _to_float(obj.get("flops") or obj.get("FLOPs") or metrics["FLOPs"])
+        metrics["Checkpoint Size MB"] = _to_float(obj.get("checkpoint_size_mb") or metrics["Checkpoint Size MB"])
+
+    patterns = {
+        "Params": r"trainable[_ ]params\s*[:=]\s*([\d\.eE\+\-]+)",
+        "LatencyMs": r"latency(?:_ms)?\s*[:=]\s*([\d\.eE\+\-]+)",
+        "LatencySec": r"latency_sec_per_iter\s*[:=]\s*([\d\.eE\+\-]+)",
+        "FLOPs": r"flops\s*[:=]\s*([\d\.eE\+\-]+)",
+        "CheckpointMB": r"checkpoint_size_mb\s*[:=]\s*([\d\.eE\+\-]+)",
+    }
+
+    for p in text_candidates:
         if not p.exists():
             continue
-        try:
-            obj = json.loads(p.read_text(encoding="utf-8", errors="ignore"))
-        except json.JSONDecodeError:
-            obj = {}
-        metrics["Params"] = obj.get("trainable_params", obj.get("params", metrics["Params"]))
-        metrics["LatencyMs"] = obj.get("latency_ms", obj.get("latency", metrics["LatencyMs"]))
-        metrics["FLOPs"] = obj.get("flops", obj.get("FLOPs", metrics["FLOPs"]))
-    log_path = run_dir / "profile.log"
-    if log_path.exists():
-        txt = log_path.read_text(encoding="utf-8", errors="ignore")
-        pats = {
-            "Params": r"trainable[_ ]params\s*[:=]\s*([\d\.eE\+\-]+)",
-            "LatencyMs": r"latency(?:_ms)?\s*[:=]\s*([\d\.eE\+\-]+)",
-            "FLOPs": r"flops\s*[:=]\s*([\d\.eE\+\-]+)",
-        }
-        for k, pat in pats.items():
-            if metrics[k] is None:
-                m = re.search(pat, txt, flags=re.IGNORECASE)
+        txt = p.read_text(encoding="utf-8", errors="ignore")
+        source_trace.append(f"profile text from {p}")
+        if metrics["Params"] is None:
+            m = re.search(patterns["Params"], txt, flags=re.IGNORECASE)
+            if m:
+                metrics["Params"] = _to_float(m.group(1))
+        if metrics["LatencyMs"] is None:
+            m = re.search(patterns["LatencyMs"], txt, flags=re.IGNORECASE)
+            if m:
+                metrics["LatencyMs"] = _to_float(m.group(1))
+            else:
+                m = re.search(patterns["LatencySec"], txt, flags=re.IGNORECASE)
                 if m:
-                    metrics[k] = _to_float(m.group(1))
+                    sec = _to_float(m.group(1))
+                    metrics["LatencyMs"] = sec * 1000.0 if sec is not None else None
+        if metrics["FLOPs"] is None:
+            m = re.search(patterns["FLOPs"], txt, flags=re.IGNORECASE)
+            if m:
+                metrics["FLOPs"] = _to_float(m.group(1))
+        if metrics["Checkpoint Size MB"] is None:
+            m = re.search(patterns["CheckpointMB"], txt, flags=re.IGNORECASE)
+            if m:
+                metrics["Checkpoint Size MB"] = _to_float(m.group(1))
+
     return metrics
+
+
+def _checkpoint_size_mb(ckpt_path: str):
+    if not ckpt_path:
+        return None
+    p = Path(ckpt_path)
+    return p.stat().st_size / (1024 * 1024) if p.exists() else None
 
 
 def write_csv(path: Path, rows: list[dict], fields: list[str]):
@@ -232,7 +383,7 @@ def make_placeholder_png(path: Path):
     save_png(path, img)
 
 
-def make_line_png(path: Path, x, ys: list[tuple[list[float], tuple[int, int, int]]]):
+def make_line_png(path: Path, x, ys):
     img = new_image(960, 540, (255, 255, 255))
     left, right, top, bottom = 90, 900, 50, 480
     draw_line(img, left, bottom, right, bottom, (0, 0, 0), 2)
@@ -261,7 +412,7 @@ def make_line_png(path: Path, x, ys: list[tuple[list[float], tuple[int, int, int
     save_png(path, img)
 
 
-def make_bar_png(path: Path, values: list[float | None]):
+def make_bar_png(path: Path, values):
     img = new_image(960, 540, (255, 255, 255))
     left, right, top, bottom = 90, 900, 50, 480
     draw_line(img, left, bottom, right, bottom, (0, 0, 0), 2)
@@ -287,50 +438,58 @@ def make_bar_png(path: Path, values: list[float | None]):
 
 def build_analysis(paths: RunPaths, output_dir: Path):
     output_dir.mkdir(parents=True, exist_ok=True)
+    trace = []
 
-    smoke_rows = _read_curves(paths.uteat_smoke_pretrain)
-    formal_rows = _read_curves(paths.uteat_formal_pretrain)
+    trace.append(f"using smoke run dir: {paths.uteat_smoke_pretrain}")
+    trace.append(f"using formal run dir: {paths.uteat_formal_pretrain}")
+    trace.append("excluded legacy run dir by default: /hy-tmp/exp/eat/runs/shipsear_uteat_pretrain")
 
-    merged = []
-    for tag, rows in [("smoke", smoke_rows), ("formal", formal_rows)]:
-        for r in rows:
-            row = {"run": tag}
-            for c in PRETRAIN_COLUMNS:
-                row[c] = r.get(c, "")
-            merged.append(row)
+    smoke_rows = _read_pretrain_rows("smoke", paths.uteat_smoke_pretrain, trace)
+    formal_rows = _read_pretrain_rows("formal", paths.uteat_formal_pretrain, trace)
+    merged = smoke_rows + formal_rows
     write_csv(output_dir / "shipsear_uteat_pretrain_metrics.csv", merged, ["run", *PRETRAIN_COLUMNS])
 
     def extract_series(rows, col):
-        out = []
-        for r in rows:
-            out.append(_to_float(r.get(col)))
-        return out
+        return [_to_float(r.get(col)) for r in rows]
 
     x_formal = extract_series(formal_rows, "num_updates")
     y_formal = extract_series(formal_rows, "loss")
     x_smoke = extract_series(smoke_rows, "num_updates")
     y_smoke = extract_series(smoke_rows, "loss")
-    make_line_png(output_dir / "uteat_pretrain_total_loss_curve.png", x_formal if any(v is not None for v in x_formal) else x_smoke, [(y_formal, (31, 119, 180)), (y_smoke, (255, 127, 14))])
+    make_line_png(
+        output_dir / "uteat_pretrain_total_loss_curve.png",
+        x_formal if any(v is not None for v in x_formal) else x_smoke,
+        [(y_formal, (31, 119, 180)), (y_smoke, (255, 127, 14))],
+    )
 
     comp_cols = ["loss_cls", "loss_recon", "loss_physical", "loss_IMAGE_regression"]
-    ys = [(extract_series(formal_rows, c), color) for c, color in zip(comp_cols, [(31, 119, 180), (44, 160, 44), (214, 39, 40), (148, 103, 189)])]
+    ys = [
+        (extract_series(formal_rows, c), color)
+        for c, color in zip(comp_cols, [(31, 119, 180), (44, 160, 44), (214, 39, 40), (148, 103, 189)])
+    ]
     make_line_png(output_dir / "uteat_pretrain_loss_components.png", x_formal, ys)
 
     finetune_rows = []
-    for model_name, run_dir in [("EAT Baseline", paths.baseline_finetune), ("UT-EAT", paths.uteat_finetune)]:
-        best, final, final_update = _find_best_accuracy(run_dir / "train.log")
-        profile = _parse_profile_metrics(run_dir)
-        best_ckpt = run_dir / "checkpoint_best.pt"
-        last_ckpt = run_dir / "checkpoint_last.pt"
+    for model_name, run_dir in [
+        ("EAT Baseline", paths.baseline_finetune),
+        ("UT-EAT", paths.uteat_finetune),
+    ]:
+        trace.append(f"using finetune run dir ({model_name}): {run_dir}")
+        fin = _find_finetune_summary(run_dir, trace)
+        profile = _parse_profile_metrics(run_dir, trace)
+        ckpt_mb = profile["Checkpoint Size MB"]
+        if ckpt_mb is None:
+            ckpt_mb = _checkpoint_size_mb(fin["last_ckpt"])
+
         finetune_rows.append(
             {
                 "Model": model_name,
-                "Best Valid Accuracy": best,
-                "Final Valid Accuracy": final,
-                "Final Update": final_update,
-                "Best Checkpoint": str(best_ckpt) if best_ckpt.exists() else "",
-                "Last Checkpoint": str(last_ckpt) if last_ckpt.exists() else "",
-                "Checkpoint Size MB": _checkpoint_size_mb(last_ckpt),
+                "Best Valid Accuracy": fin["best"],
+                "Final Valid Accuracy": fin["final"],
+                "Final Update": fin["final_update"],
+                "Best Checkpoint": fin["best_ckpt"],
+                "Last Checkpoint": fin["last_ckpt"],
+                "Checkpoint Size MB": ckpt_mb,
                 "Params": profile["Params"],
                 "Latency (ms)": profile["LatencyMs"],
                 "FLOPs": profile["FLOPs"],
@@ -346,8 +505,14 @@ def build_analysis(paths: RunPaths, output_dir: Path):
     eff_fields = ["Model", "Params", "Checkpoint Size MB", "Latency (ms)", "FLOPs", "Best Valid Accuracy"]
     write_csv(output_dir / "shipsear_model_efficiency_comparison.csv", finetune_rows, eff_fields)
 
-    make_bar_png(output_dir / "shipsear_accuracy_comparison.png", [_to_float(finetune_rows[0]["Best Valid Accuracy"]), _to_float(finetune_rows[1]["Best Valid Accuracy"])])
-    make_bar_png(output_dir / "shipsear_efficiency_comparison.png", [_to_float(finetune_rows[0]["Params"]), _to_float(finetune_rows[1]["Params"])])
+    make_bar_png(
+        output_dir / "shipsear_accuracy_comparison.png",
+        [_to_float(finetune_rows[0]["Best Valid Accuracy"]), _to_float(finetune_rows[1]["Best Valid Accuracy"])],
+    )
+    make_bar_png(
+        output_dir / "shipsear_efficiency_comparison.png",
+        [_to_float(finetune_rows[0]["Params"]), _to_float(finetune_rows[1]["Params"])],
+    )
     make_line_png(
         output_dir / "shipsear_accuracy_vs_latency.png",
         [_to_float(finetune_rows[0]["Latency (ms)"]), _to_float(finetune_rows[1]["Latency (ms)"])],
@@ -359,7 +524,6 @@ def build_analysis(paths: RunPaths, output_dir: Path):
         [([_to_float(finetune_rows[0]["Best Valid Accuracy"]), _to_float(finetune_rows[1]["Best Valid Accuracy"])], (80, 130, 200))],
     )
 
-    notes = output_dir / "shipsear_uteat_analysis_notes.md"
     missing = []
     for label, p in [
         ("baseline finetune", paths.baseline_finetune),
@@ -370,25 +534,34 @@ def build_analysis(paths: RunPaths, output_dir: Path):
         if not p.exists():
             missing.append(f"- missing run directory: `{p}` ({label})")
 
-    notes.write_text(
-        "\n".join(
-            [
-                "# ShipsEar UT-EAT Analysis Notes",
-                "",
-                "## Data availability",
-                *(missing if missing else ["- all configured run directories are present."]),
-                "",
-                "## Missing metrics handling",
-                "- Precision/Recall/F1/Macro-F1 are kept empty when corresponding metrics are absent in logs.",
-                "- Params/Latency/FLOPs are kept empty when no profile artifact is found in run directories.",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    notes = output_dir / "shipsear_uteat_analysis_notes.md"
+    note_lines = [
+        "# ShipsEar UT-EAT Analysis Notes",
+        "",
+        "## Run directories used",
+        f"- baseline finetune: `{paths.baseline_finetune}`",
+        f"- uteat smoke pretrain: `{paths.uteat_smoke_pretrain}`",
+        f"- uteat formal pretrain: `{paths.uteat_formal_pretrain}`",
+        f"- uteat finetune: `{paths.uteat_finetune}`",
+        "- legacy directory excluded by default: `/hy-tmp/exp/eat/runs/shipsear_uteat_pretrain`",
+        "",
+        "## Source trace",
+        *[f"- {t}" for t in trace],
+        "",
+        "## Missing directories",
+        *(missing if missing else ["- none"]),
+        "",
+        "## Missing metrics handling",
+        "- Precision/Recall/F1/Macro-F1 remain empty when not found in artifacts.",
+        "- Params/Latency/FLOPs remain empty only when profile artifacts are unavailable or unparsable.",
+    ]
+    notes.write_text("\n".join(note_lines), encoding="utf-8")
 
     return {
         "output_dir": str(output_dir),
         "pretrain_rows": len(merged),
+        "smoke_rows": len(smoke_rows),
+        "formal_rows": len(formal_rows),
         "finetune_rows": len(finetune_rows),
     }
 
