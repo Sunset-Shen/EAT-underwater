@@ -3,6 +3,7 @@ set -euo pipefail
 
 GPU_ID="${1:-0}"
 THROUGHPUT_BS="${2:-8}"
+BASELINE_MAX_UPDATE="${3:-4000}"
 
 EAT_ROOT="${EAT_ROOT:-/hy-tmp/eat_work/EAT}"
 FAIRSEQ_ROOT="${FAIRSEQ_ROOT:-/hy-tmp/eat_work/fairseq}"
@@ -71,7 +72,7 @@ run_eval_and_profile() {
 }
 
 # 1) ShipsEar / EAT-base
-train_if_missing "${SHIP_EAT_RUN}/checkpoint_best.pt" "bash ${EAT_ROOT}/scripts/finetuning_SHIPSEAR.sh ${GPU_ID} 8 6"
+train_if_missing "${SHIP_EAT_RUN}/checkpoint_best.pt" "bash ${EAT_ROOT}/scripts/finetuning_SHIPSEAR.sh ${GPU_ID} 8 6 ${BASELINE_MAX_UPDATE}"
 SHIP_EAT_CKPT="$(choose_ckpt "${SHIP_EAT_RUN}")"
 if [[ -z "${SHIP_EAT_CKPT}" ]]; then
   echo "[ERROR] ShipsEar EAT-base checkpoint not found under ${SHIP_EAT_RUN}" >&2
@@ -89,7 +90,7 @@ else
 fi
 
 # 3) DeepShip / EAT-base
-train_if_missing "${DEEP_EAT_RUN}/checkpoint_best.pt" "bash ${EAT_ROOT}/scripts/finetuning_DEEPSHIP.sh ${GPU_ID} 8 6"
+train_if_missing "${DEEP_EAT_RUN}/checkpoint_best.pt" "bash ${EAT_ROOT}/scripts/finetuning_DEEPSHIP.sh ${GPU_ID} 8 6 ${BASELINE_MAX_UPDATE}"
 DEEP_EAT_CKPT="$(choose_ckpt "${DEEP_EAT_RUN}")"
 if [[ -z "${DEEP_EAT_CKPT}" ]]; then
   echo "[ERROR] DeepShip EAT-base checkpoint not found under ${DEEP_EAT_RUN}" >&2

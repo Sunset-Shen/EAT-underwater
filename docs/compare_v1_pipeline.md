@@ -7,11 +7,28 @@
 
 ## 一键入口
 ```bash
-bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_compare_v1.sh 0 8
+bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_compare_v1.sh 0 8 4000
 ```
 参数：
 - `$1` GPU ID，默认 `0`
 - `$2` throughput 的首选 batch size，默认 `8`（OOM 自动回退到 `4`）
+- `$3` baseline(EAT-base) 的 `max_update`，默认 `4000`
+
+## 分条运行（推荐）
+1) 仅训练 ShipsEar / EAT-base（max_update=4000）：
+```bash
+bash /hy-tmp/eat_work/EAT/scripts/finetuning_SHIPSEAR.sh 0 8 6 4000
+```
+
+2) 仅训练 DeepShip / EAT-base（max_update=4000）：
+```bash
+bash /hy-tmp/eat_work/EAT/scripts/finetuning_DEEPSHIP.sh 0 8 6 4000
+```
+
+3) 已有 checkpoint 后，再统一跑评测/profile/汇总：
+```bash
+bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_compare_v1.sh 0 8 4000
+```
 
 ## 目录结构
 ```text
