@@ -14,16 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-
-
-def _to_device(sample, device: torch.device):
-    if torch.is_tensor(sample):
-        return sample.to(device)
-    if isinstance(sample, dict):
-        return {k: _to_device(v, device) for k, v in sample.items()}
-    if isinstance(sample, list):
-        return [_to_device(v, device) for v in sample]
-    return sample
+from compare_v1_batch_adapter import get_label_tensor, run_model_logits, to_device
 
 
 def _resolve_user_dir(saved_cfg, default_user_dir: Path) -> str:
@@ -88,15 +79,18 @@ def main() -> None:
 
     y_true, y_pred = [], []
     device = torch.device(args.device)
+    sample_debug = None
 
     with torch.no_grad():
         for sample in itr:
             if not sample:
                 continue
-            sample = _to_device(sample, device)
-            logits = model(sample["net_input"]["source"])
+            sample = to_device(sample, device)
+            logits, _, debug = run_model_logits(model, sample)
+            if sample_debug is None:
+                sample_debug = debug
             pred = torch.argmax(logits, dim=-1)
-            target = torch.argmax(sample["label"], dim=-1)
+            target = torch.argmax(get_label_tensor(sample), dim=-1)
             y_pred.extend(pred.detach().cpu().tolist())
             y_true.extend(target.detach().cpu().tolist())
 
@@ -119,6 +113,7 @@ def main() -> None:
         "num_samples": len(y_true),
         "batch_size": args.batch_size,
         "device": args.device,
+        "sample_structure_debug": sample_debug,
     }
 
     args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")

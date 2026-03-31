@@ -10,16 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import torch
-
-
-def _to_device(sample, device: torch.device):
-    if torch.is_tensor(sample):
-        return sample.to(device)
-    if isinstance(sample, dict):
-        return {k: _to_device(v, device) for k, v in sample.items()}
-    if isinstance(sample, list):
-        return [_to_device(v, device) for v in sample]
-    return sample
+from compare_v1_batch_adapter import extract_forward_kwargs, to_device
 
 
 def _sync(device: torch.device):
@@ -27,14 +18,14 @@ def _sync(device: torch.device):
         torch.cuda.synchronize(device)
 
 
-def _run_timing(model, source, device, warmup, iters):
+def _run_timing(model, kwargs, device, warmup, iters):
     with torch.no_grad():
         for _ in range(warmup):
-            _ = model(source)
+            _ = model(**kwargs)
         _sync(device)
         t0 = time.perf_counter()
         for _ in range(iters):
-            _ = model(source)
+            _ = model(**kwargs)
         _sync(device)
     return (time.perf_counter() - t0) / max(iters, 1)
 
@@ -106,16 +97,16 @@ def main() -> None:
     models, _, _ = checkpoint_utils.load_model_ensemble_and_task([str(args.checkpoint)], task=task)
     model = models[0].to(device).eval()
 
-    sample_bs1 = _to_device(_pick_batch(task, dataset, 1), device)
-    src_bs1 = sample_bs1["net_input"]["source"]
-    lat_s_per_sample = _run_timing(model, src_bs1, device, args.warmup, args.iters)
+    sample_bs1 = to_device(_pick_batch(task, dataset, 1), device)
+    kwargs_bs1, sample_debug = extract_forward_kwargs(sample_bs1, model)
+    lat_s_per_sample = _run_timing(model, kwargs_bs1, device, args.warmup, args.iters)
 
     throughput_bs = args.throughput_batch_size
     oom_fallback = False
     try:
-        sample_bst = _to_device(_pick_batch(task, dataset, throughput_bs), device)
-        src_bst = sample_bst["net_input"]["source"]
-        thr_s_per_iter = _run_timing(model, src_bst, device, args.warmup, args.iters)
+        sample_bst = to_device(_pick_batch(task, dataset, throughput_bs), device)
+        kwargs_bst, _ = extract_forward_kwargs(sample_bst, model)
+        thr_s_per_iter = _run_timing(model, kwargs_bst, device, args.warmup, args.iters)
     except RuntimeError as exc:
         if "out of memory" not in str(exc).lower() and "cuda" not in str(exc).lower():
             raise
@@ -123,17 +114,32 @@ def main() -> None:
             torch.cuda.empty_cache()
         oom_fallback = True
         throughput_bs = args.fallback_throughput_batch_size
-        sample_bst = _to_device(_pick_batch(task, dataset, throughput_bs), device)
-        src_bst = sample_bst["net_input"]["source"]
-        thr_s_per_iter = _run_timing(model, src_bst, device, args.warmup, args.iters)
+        sample_bst = to_device(_pick_batch(task, dataset, throughput_bs), device)
+        kwargs_bst, _ = extract_forward_kwargs(sample_bst, model)
+        thr_s_per_iter = _run_timing(model, kwargs_bst, device, args.warmup, args.iters)
 
     flops = None
-    flops_method = "fvcore.FlopCountAnalysis forward(source)"
+    flops_method = "fvcore.FlopCountAnalysis via wrapper forward(selected_model_input)"
     try:
         from fvcore.nn import FlopCountAnalysis
+        import torch.nn as nn
+
+        class _KwargWrapper(nn.Module):
+            def __init__(self, model_, key_):
+                super().__init__()
+                self.model = model_
+                self.key = key_
+
+            def forward(self, x):
+                return self.model(**{self.key: x})
+
+        if len(kwargs_bs1) != 1:
+            raise RuntimeError("FLOPs currently requires a single tensor model input.")
+        input_key, input_tensor = next(iter(kwargs_bs1.items()))
 
         with torch.no_grad():
-            flops = float(FlopCountAnalysis(model, (src_bs1,)).total())
+            wrapped = _KwargWrapper(model, input_key)
+            flops = float(FlopCountAnalysis(wrapped, (input_tensor,)).total())
     except Exception as exc:
         flops_method += f" (unavailable: {exc.__class__.__name__})"
 
@@ -159,6 +165,7 @@ def main() -> None:
             "warmup": args.warmup,
             "iters": args.iters,
         },
+        "sample_structure_debug": sample_debug,
     }
 
     args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
