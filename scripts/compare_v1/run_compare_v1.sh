@@ -84,7 +84,7 @@ run_eval_and_profile "shipsear" "eat_base" "${SHIP_MANIFEST}" "${SHIP_EAT_CKPT}"
 SHIP_UT_CKPT="$(choose_ckpt "${SHIP_UT_RUN}")"
 if [[ -z "${SHIP_UT_CKPT}" ]]; then
   echo "[WARN] ShipsEar UT-EAT finetuned checkpoint missing. Minimal rerun:" | tee "${RESULT_ROOT}/shipsear/ut_eat/retrain_required.txt"
-  echo "bash ${EAT_ROOT}/scripts/finetuning_SHIPSEAR_UTEAT.sh ${GPU_ID} 8 6" | tee -a "${RESULT_ROOT}/shipsear/ut_eat/retrain_required.txt"
+  echo "bash ${EAT_ROOT}/scripts/finetuning_SHIPSEAR_UTEAT.sh ${GPU_ID} 8 6 4000" | tee -a "${RESULT_ROOT}/shipsear/ut_eat/retrain_required.txt"
 else
   run_eval_and_profile "shipsear" "ut_eat" "${SHIP_MANIFEST}" "${SHIP_UT_CKPT}" "${SHIP_UT_RUN}/(from_uteat_pretrain)"
 fi
@@ -102,7 +102,7 @@ run_eval_and_profile "deepship" "eat_base" "${DEEP_MANIFEST}" "${DEEP_EAT_CKPT}"
 DEEP_UT_CKPT="$(choose_ckpt "${DEEP_UT_RUN}")"
 if [[ -z "${DEEP_UT_CKPT}" ]]; then
   echo "[WARN] DeepShip UT-EAT finetuned checkpoint missing. Minimal rerun:" | tee "${RESULT_ROOT}/deepship/ut_eat/retrain_required.txt"
-  echo "bash ${EAT_ROOT}/scripts/finetuning_DEEPSHIP_UTEAT.sh ${GPU_ID} 8 6" | tee -a "${RESULT_ROOT}/deepship/ut_eat/retrain_required.txt"
+  echo "bash ${EAT_ROOT}/scripts/finetuning_DEEPSHIP_UTEAT.sh ${GPU_ID} 8 6 4000" | tee -a "${RESULT_ROOT}/deepship/ut_eat/retrain_required.txt"
 else
   run_eval_and_profile "deepship" "ut_eat" "${DEEP_MANIFEST}" "${DEEP_UT_CKPT}" "${DEEP_UT_RUN}/(from_uteat_pretrain)"
 fi

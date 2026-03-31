@@ -30,6 +30,27 @@ bash /hy-tmp/eat_work/EAT/scripts/finetuning_DEEPSHIP.sh 0 8 6 4000
 bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_compare_v1.sh 0 8 4000
 ```
 
+## UT-EAT 预训练 -> 微调（建议顺序）
+### ShipsEar
+```bash
+# 1) smoke pretrain (100 updates)
+bash /hy-tmp/eat_work/EAT/scripts/pretraining_SHIPSEAR_UTEAT_SMOKE.sh 0 8 2 1
+# 2) formal pretrain (10000 updates)
+bash /hy-tmp/eat_work/EAT/scripts/pretraining_SHIPSEAR_UTEAT_FORMAL.sh 0 8 2 1
+# 3) finetune (4000 updates)
+bash /hy-tmp/eat_work/EAT/scripts/finetuning_SHIPSEAR_UTEAT.sh 0 8 6 4000
+```
+
+### DeepShip
+```bash
+# 4) smoke pretrain (100 updates)
+bash /hy-tmp/eat_work/EAT/scripts/pretraining_DEEPSHIP_UTEAT_SMOKE.sh 0 8 2 1
+# 5) formal pretrain (10000 updates)
+bash /hy-tmp/eat_work/EAT/scripts/pretraining_DEEPSHIP_UTEAT_FORMAL.sh 0 8 2 1
+# 6) finetune (4000 updates)
+bash /hy-tmp/eat_work/EAT/scripts/finetuning_DEEPSHIP_UTEAT.sh 0 8 6 4000
+```
+
 ## 目录结构
 ```text
 /hy-tmp/exp/eat/results/compare_v1/
