@@ -1,0 +1,19 @@
+# @package _group_
+
+defaults:
+  - finetuning_deepship
+
+common:
+  tensorboard_logdir: /hy-tmp/exp/eat/logs/deepship_uteat_finetune/tb
+
+checkpoint:
+  save_dir: /hy-tmp/exp/eat/runs/deepship_uteat
+
+model:
+  model_path: /hy-tmp/exp/eat/runs/deepship_uteat_pretrain/checkpoint_last.pt
+
+dataset:
+  batch_size: 8
+
+optimization:
+  update_freq: [6]
