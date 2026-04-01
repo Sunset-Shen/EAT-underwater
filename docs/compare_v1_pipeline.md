@@ -103,7 +103,7 @@ bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_shipsear_main_analysis.sh
 - UT-EAT ckpt: `/hy-tmp/exp/eat/runs/shipsear_uteat/checkpoint_best.pt`
 - compare 主表: `/hy-tmp/exp/eat/results/compare_v1/summary/compare_main.csv`
 - pretrain 日志: `/hy-tmp/exp/eat/results/compare_v1/shipsear_formal_pretrain_2026-03-31_164952.log`
-- baseline finetune 日志: `/hy-tmp/exp/eat/runs/shipsear_baseline/train.log`
+- baseline finetune 日志: `/hy-tmp/exp/eat/results/compare_v1/train_shipsear_eatbase_2026-03-31_115626.log`
 - UT-EAT finetune 日志: `/hy-tmp/exp/eat/results/compare_v1/shipsear_uteat_finetune_2026-04-01_005407.log`
 
 默认输出：

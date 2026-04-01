@@ -10,7 +10,7 @@ UTEAT_CKPT="${UTEAT_CKPT:-/hy-tmp/exp/eat/runs/shipsear_uteat/checkpoint_best.pt
 MANIFEST_DIR="${MANIFEST_DIR:-/hy-tmp/exp/eat/manifests/shipsear}"
 COMPARE_MAIN_CSV="${COMPARE_MAIN_CSV:-/hy-tmp/exp/eat/results/compare_v1/summary/compare_main.csv}"
 PRETRAIN_LOG="${PRETRAIN_LOG:-/hy-tmp/exp/eat/results/compare_v1/shipsear_formal_pretrain_2026-03-31_164952.log}"
-BASELINE_FINETUNE_LOG="${BASELINE_FINETUNE_LOG:-/hy-tmp/exp/eat/runs/shipsear_baseline/train.log}"
+BASELINE_FINETUNE_LOG="${BASELINE_FINETUNE_LOG:-/hy-tmp/exp/eat/results/compare_v1/train_shipsear_eatbase_2026-03-31_115626.log}"
 UTEAT_FINETUNE_LOG="${UTEAT_FINETUNE_LOG:-/hy-tmp/exp/eat/results/compare_v1/shipsear_uteat_finetune_2026-04-01_005407.log}"
 
 python "${EAT_ROOT}/utils/export_shipsear_classification_analysis.py" \

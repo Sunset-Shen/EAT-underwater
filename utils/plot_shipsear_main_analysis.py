@@ -44,11 +44,15 @@ def _plot_overall(compare_csv: Path, out_dir: Path):
     axes[0].set_title("ShipsEar Accuracy")
     axes[0].set_ylim(0, 1.05)
     axes[0].set_ylabel("Accuracy")
+    for i, v in enumerate(acc):
+        axes[0].text(i, v + 0.015, f"{v:.4f}", ha="center", va="bottom", fontsize=9)
 
     axes[1].bar(labels, f1, color=["#4C72B0", "#55A868"])
     axes[1].set_title("ShipsEar Macro-F1")
     axes[1].set_ylim(0, 1.05)
     axes[1].set_ylabel("Macro-F1")
+    for i, v in enumerate(f1):
+        axes[1].text(i, v + 0.015, f"{v:.4f}", ha="center", va="bottom", fontsize=9)
 
     _save(fig, out_dir / "shipsear_overall_metrics.png")
 
@@ -96,6 +100,10 @@ def _smooth(y, w=5):
     if len(y) < w:
         return y
     arr = np.array(y, dtype=float)
+    if np.any(np.isnan(arr)):
+        if np.all(np.isnan(arr)):
+            return y
+        arr = np.where(np.isnan(arr), np.nanmean(arr), arr)
     kernel = np.ones(w) / w
     return np.convolve(arr, kernel, mode="same").tolist()
 
@@ -127,57 +135,75 @@ def _plot_pretrain_loss(log_path: Path, out_dir: Path):
         for k, v in vals.items():
             series[k].append(np.nan if v is None else v)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    for k, color in [
+    metrics = [
         ("train_loss", "#1f77b4"),
         ("train_loss_cls", "#ff7f0e"),
         ("train_loss_recon", "#2ca02c"),
         ("train_loss_physical", "#d62728"),
         ("train_loss_IMAGE_regression", "#9467bd"),
-    ]:
+    ]
+    fig, axes = plt.subplots(3, 2, figsize=(10, 8), sharex=True)
+    axes = axes.flatten()
+    for idx, (k, color) in enumerate(metrics):
+        ax = axes[idx]
         y = np.array(series[k], dtype=float)
         if np.all(np.isnan(y)):
+            ax.set_title(f"{k} (no data)")
+            ax.grid(alpha=0.2)
             continue
         ym = np.where(np.isnan(y), np.nanmean(y), y)
-        ax.plot(x, _smooth(ym.tolist(), w=7), label=k, linewidth=1.5, color=color)
-
-    ax.set_title("ShipsEar UT-EAT Formal Pretrain Loss Curves")
-    ax.set_xlabel("num_updates")
-    ax.set_ylabel("loss")
-    ax.legend(fontsize=8)
+        ax.plot(x, _smooth(ym.tolist(), w=7), linewidth=1.4, color=color)
+        ax.set_title(k)
+        ax.set_ylabel("loss")
+        ax.grid(alpha=0.2)
+    axes[4].set_xlabel("num_updates")
+    axes[5].axis("off")
+    fig.suptitle("ShipsEar UT-EAT Formal Pretrain Loss Components", fontsize=12)
     _save(fig, out_dir / "shipsear_uteat_pretrain_loss_curve.png")
 
 
 def _extract_valid_series(log_path: Path):
     rows = _parse_log_rows(log_path)
-    xs, acc, vloss = [], [], []
+    triples = []
     for r in rows:
         u = _pick_updates(r)
         a = _pick(r, ["valid_accuracy", "accuracy"])
         l = _pick(r, ["valid_loss", "loss"])
         if u is None or (a is None and l is None):
             continue
-        xs.append(u)
-        acc.append(np.nan if a is None else a)
-        vloss.append(np.nan if l is None else l)
+        triples.append((u, np.nan if a is None else a, np.nan if l is None else l))
+    triples.sort(key=lambda x: x[0])
+    xs = [t[0] for t in triples]
+    acc = [t[1] for t in triples]
+    vloss = [t[2] for t in triples]
     return xs, acc, vloss
 
 
 def _plot_finetune_curves(baseline_log: Path, uteat_log: Path, out_dir: Path):
     xb, ab, lb = _extract_valid_series(baseline_log)
     xu, au, lu = _extract_valid_series(uteat_log)
+    lb_s = _smooth(lb, w=5)
+    lu_s = _smooth(lu, w=5)
 
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6))
-    axes[0].plot(xb, ab, label="EAT-base", color="#4C72B0")
-    axes[0].plot(xu, au, label="UT-EAT", color="#55A868")
+    axes[0].plot(xb, ab, label="EAT-base", color="#4C72B0", linewidth=1.6)
+    axes[0].plot(xu, au, label="UT-EAT", color="#55A868", linewidth=1.6)
+    if len(ab) > 0:
+        ib = int(np.nanargmax(np.array(ab, dtype=float)))
+        axes[0].plot(xb[ib], ab[ib], marker="*", markersize=12, color="#4C72B0")
+        axes[0].annotate(f"best {ab[ib]:.4f}", (xb[ib], ab[ib]), textcoords="offset points", xytext=(6, 6), fontsize=8)
+    if len(au) > 0:
+        iu = int(np.nanargmax(np.array(au, dtype=float)))
+        axes[0].plot(xu[iu], au[iu], marker="*", markersize=12, color="#55A868")
+        axes[0].annotate(f"best {au[iu]:.4f}", (xu[iu], au[iu]), textcoords="offset points", xytext=(6, -12), fontsize=8)
     axes[0].set_title("Valid Accuracy")
     axes[0].set_xlabel("num_updates")
     axes[0].set_ylabel("accuracy")
     axes[0].legend(fontsize=8)
 
-    axes[1].plot(xb, lb, label="EAT-base", color="#4C72B0")
-    axes[1].plot(xu, lu, label="UT-EAT", color="#55A868")
-    axes[1].set_title("Valid Loss")
+    axes[1].plot(xb, lb_s, label="EAT-base (MA5)", color="#4C72B0", linewidth=1.6)
+    axes[1].plot(xu, lu_s, label="UT-EAT (MA5)", color="#55A868", linewidth=1.6)
+    axes[1].set_title("Valid Loss (moving-average, window=5)")
     axes[1].set_xlabel("num_updates")
     axes[1].set_ylabel("loss")
     axes[1].legend(fontsize=8)
@@ -208,6 +234,13 @@ def _plot_confusions(cm_base_csv: Path, cm_ut_csv: Path, out_dir: Path):
         ax.set_yticks(range(len(names)))
         ax.set_xticklabels(names, rotation=45, ha="right", fontsize=8)
         ax.set_yticklabels(names, fontsize=8)
+        vmax = np.max(mat) if mat.size > 0 else 0
+        thresh = vmax * 0.5
+        for i in range(mat.shape[0]):
+            for j in range(mat.shape[1]):
+                val = int(round(mat[i, j]))
+                txt_color = "white" if mat[i, j] > thresh else "black"
+                ax.text(j, i, f"{val:d}", ha="center", va="center", color=txt_color, fontsize=7)
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     _save(fig, out_dir / "shipsear_confusion_matrices.png")
 
@@ -245,7 +278,7 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--compare-main-csv", type=Path, default=Path("/hy-tmp/exp/eat/results/compare_v1/summary/compare_main.csv"))
     p.add_argument("--pretrain-log", type=Path, default=Path("/hy-tmp/exp/eat/results/compare_v1/shipsear_formal_pretrain_2026-03-31_164952.log"))
-    p.add_argument("--baseline-finetune-log", type=Path, default=Path("/hy-tmp/exp/eat/runs/shipsear_baseline/train.log"))
+    p.add_argument("--baseline-finetune-log", type=Path, default=Path("/hy-tmp/exp/eat/results/compare_v1/train_shipsear_eatbase_2026-03-31_115626.log"))
     p.add_argument("--uteat-finetune-log", type=Path, default=Path("/hy-tmp/exp/eat/results/compare_v1/shipsear_uteat_finetune_2026-04-01_005407.log"))
     p.add_argument("--analysis-dir", type=Path, default=Path("/hy-tmp/exp/eat/results/compare_v1/shipsear/analysis"))
     p.add_argument("--figures-dir", type=Path, default=Path("/hy-tmp/exp/eat/results/compare_v1/figures"))
