@@ -9,8 +9,21 @@ EAT_ROOT="/hy-tmp/eat_work/EAT"
 FAIRSEQ_ROOT="/hy-tmp/eat_work/fairseq"
 MANIFEST_DIR="/hy-tmp/exp/eat/manifests/shipsear"
 RUN_ROOT="/hy-tmp/exp/eat/runs/shipsear_uteat"
-PRETRAIN_CKPT="/hy-tmp/exp/eat/runs/shipsear_uteat_formal_pretrain/checkpoint_last.pt"
+FORMAL_PRETRAIN_CKPT="/hy-tmp/exp/eat/runs/shipsear_uteat_formal_pretrain/checkpoint_last.pt"
+LEGACY_PRETRAIN_CKPT="/hy-tmp/exp/eat/runs/shipsear_uteat_pretrain/checkpoint_last.pt"
 CONFIG_NAME="finetuning_shipsear_uteat"
+
+if [[ -f "${FORMAL_PRETRAIN_CKPT}" ]]; then
+  PRETRAIN_CKPT="${FORMAL_PRETRAIN_CKPT}"
+elif [[ -f "${LEGACY_PRETRAIN_CKPT}" ]]; then
+  PRETRAIN_CKPT="${LEGACY_PRETRAIN_CKPT}"
+  echo "[WARN] Using legacy pretrain checkpoint: ${PRETRAIN_CKPT}"
+else
+  echo "[ERROR] Missing UT-EAT pretrain checkpoint."
+  echo "[ERROR] Expected formal: ${FORMAL_PRETRAIN_CKPT}"
+  echo "[ERROR] Fallback legacy: ${LEGACY_PRETRAIN_CKPT}"
+  exit 1
+fi
 
 mkdir -p "${RUN_ROOT}"
 if [[ "${FRESH_START}" == "1" ]]; then

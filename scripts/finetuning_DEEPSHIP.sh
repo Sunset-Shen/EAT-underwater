@@ -1,10 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: bash scripts/finetuning_DEEPSHIP.sh [GPU_ID] [BATCH_SIZE] [UPDATE_FREQ]
+# Usage: bash scripts/finetuning_DEEPSHIP.sh [GPU_ID] [BATCH_SIZE] [UPDATE_FREQ] [MAX_UPDATE]
 GPU_ID="${1:-0}"
 BATCH_SIZE="${2:-8}"
 UPDATE_FREQ="${3:-6}"
+MAX_UPDATE="${4:-4000}"
 
 EAT_ROOT="/hy-tmp/eat_work/EAT"
 FAIRSEQ_ROOT="/hy-tmp/eat_work/fairseq"
@@ -30,6 +31,7 @@ python fairseq_cli/hydra_train.py \
     checkpoint.save_dir="${RUN_ROOT}" \
     dataset.batch_size="${BATCH_SIZE}" \
     optimization.update_freq="[${UPDATE_FREQ}]" \
+    optimization.max_update="${MAX_UPDATE}" \
     task.data="${MANIFEST_DIR}" \
     model.model_path="${PRETRAIN_CKPT}" \
     model.num_classes="${NUM_CLASSES}"
