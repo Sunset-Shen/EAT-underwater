@@ -14,3 +14,9 @@ dataset:
 
 optimization:
   max_update: 100
+
+optimizer:
+  groups:
+    default:
+      lr_scheduler:
+        warmup_updates: 10
