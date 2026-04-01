@@ -1,0 +1,20 @@
+# @package _group_
+
+defaults:
+  - pretraining_shipsear_uteat_formal
+
+common:
+  tensorboard_logdir: /hy-tmp/exp/eat/logs/ablation_shipsear_ut_full_pretrain/tb
+
+checkpoint:
+  save_dir: /hy-tmp/exp/eat/runs/ablation_shipsear_ut_full_pretrain
+
+model:
+  backbone_variant: uteat
+  physical_loss_weight: 0.2
+  modalities:
+    image:
+      mask_strategy: uteat_phys
+
+optimization:
+  max_update: 10000
