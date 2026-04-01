@@ -109,3 +109,22 @@ bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_shipsear_main_analysis.sh
 默认输出：
 - 数据: `/hy-tmp/exp/eat/results/compare_v1/shipsear/analysis`
 - 图: `/hy-tmp/exp/eat/results/compare_v1/figures`
+
+## 4.3.4 轻量化与部署友好性分析
+```bash
+bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_lightweighting_analysis.sh
+```
+
+默认输入：
+- compare 主表: `/hy-tmp/exp/eat/results/compare_v1/summary/compare_main.csv`
+- profile JSON: `${RESULT_ROOT}/{shipsear,deepship}/{eat_base,ut_eat}/profile/profile_metrics.json`
+
+默认输出：
+- 表格数据: `/hy-tmp/exp/eat/results/compare_v1/lightweighting_analysis`
+  - `lightweighting_main_table.csv/.md`
+  - `lightweighting_relative_table.csv/.md`
+- 图: `/hy-tmp/exp/eat/results/compare_v1/figures`
+  - `lightweighting_normalized_comparison.png/.pdf`
+  - `inference_efficiency_comparison.png/.pdf`
+  - `performance_complexity_tradeoff.png/.pdf`
+  - `lightweighting_gain_summary.png/.pdf`
