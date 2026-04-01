@@ -10,7 +10,7 @@ checkpoint:
   save_dir: /hy-tmp/exp/eat/runs/deepship_uteat
 
 model:
-  model_path: /hy-tmp/exp/eat/runs/deepship_uteat_pretrain/checkpoint_last.pt
+  model_path: /hy-tmp/exp/eat/runs/deepship_uteat_formal_pretrain/checkpoint_last.pt
 
 dataset:
   batch_size: 8
