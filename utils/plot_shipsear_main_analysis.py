@@ -135,30 +135,16 @@ def _plot_pretrain_loss(log_path: Path, out_dir: Path):
         for k, v in vals.items():
             series[k].append(np.nan if v is None else v)
 
-    metrics = [
-        ("train_loss", "#1f77b4"),
-        ("train_loss_cls", "#ff7f0e"),
-        ("train_loss_recon", "#2ca02c"),
-        ("train_loss_physical", "#d62728"),
-        ("train_loss_IMAGE_regression", "#9467bd"),
-    ]
-    fig, axes = plt.subplots(3, 2, figsize=(10, 8), sharex=True)
-    axes = axes.flatten()
-    for idx, (k, color) in enumerate(metrics):
-        ax = axes[idx]
-        y = np.array(series[k], dtype=float)
-        if np.all(np.isnan(y)):
-            ax.set_title(f"{k} (no data)")
-            ax.grid(alpha=0.2)
-            continue
-        ym = np.where(np.isnan(y), np.nanmean(y), y)
-        ax.plot(x, _smooth(ym.tolist(), w=7), linewidth=1.4, color=color)
-        ax.set_title(k)
-        ax.set_ylabel("loss")
-        ax.grid(alpha=0.2)
-    axes[4].set_xlabel("num_updates")
-    axes[5].axis("off")
-    fig.suptitle("ShipsEar UT-EAT Formal Pretrain Loss Components", fontsize=12)
+    fig, ax = plt.subplots(figsize=(7.5, 4))
+    y = np.array(series["train_loss"], dtype=float)
+    if np.all(np.isnan(y)):
+        raise RuntimeError("No train_loss found in pretrain log for plotting.")
+    ym = np.where(np.isnan(y), np.nanmean(y), y)
+    ax.plot(x, _smooth(ym.tolist(), w=11), linewidth=1.8, color="#1f77b4")
+    ax.set_title("ShipsEar UT-EAT Formal Pretrain Train Loss")
+    ax.set_xlabel("num_updates")
+    ax.set_ylabel("train_loss")
+    ax.grid(alpha=0.2)
     _save(fig, out_dir / "shipsear_uteat_pretrain_loss_curve.png")
 
 
@@ -182,31 +168,23 @@ def _extract_valid_series(log_path: Path):
 def _plot_finetune_curves(baseline_log: Path, uteat_log: Path, out_dir: Path):
     xb, ab, lb = _extract_valid_series(baseline_log)
     xu, au, lu = _extract_valid_series(uteat_log)
-    lb_s = _smooth(lb, w=5)
-    lu_s = _smooth(lu, w=5)
+    ab_s = _smooth(ab, w=9)
+    au_s = _smooth(au, w=9)
+    lb_s = _smooth(lb, w=15)
+    lu_s = _smooth(lu, w=15)
 
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6))
-    axes[0].plot(xb, ab, label="EAT-base", color="#4C72B0", linewidth=1.6)
-    axes[0].plot(xu, au, label="UT-EAT", color="#55A868", linewidth=1.6)
-    if len(ab) > 0:
-        ib = int(np.nanargmax(np.array(ab, dtype=float)))
-        axes[0].plot(xb[ib], ab[ib], marker="*", markersize=12, color="#4C72B0")
-        axes[0].annotate(f"best {ab[ib]:.4f}", (xb[ib], ab[ib]), textcoords="offset points", xytext=(6, 6), fontsize=8)
-    if len(au) > 0:
-        iu = int(np.nanargmax(np.array(au, dtype=float)))
-        axes[0].plot(xu[iu], au[iu], marker="*", markersize=12, color="#55A868")
-        axes[0].annotate(f"best {au[iu]:.4f}", (xu[iu], au[iu]), textcoords="offset points", xytext=(6, -12), fontsize=8)
-    axes[0].set_title("Valid Accuracy")
+    axes[0].plot(xb, ab_s, color="#4C72B0", linewidth=1.8)
+    axes[0].plot(xu, au_s, color="#55A868", linewidth=1.8)
+    axes[0].set_title("Valid Accuracy (smoothed)")
     axes[0].set_xlabel("num_updates")
     axes[0].set_ylabel("accuracy")
-    axes[0].legend(fontsize=8)
 
-    axes[1].plot(xb, lb_s, label="EAT-base (MA5)", color="#4C72B0", linewidth=1.6)
-    axes[1].plot(xu, lu_s, label="UT-EAT (MA5)", color="#55A868", linewidth=1.6)
-    axes[1].set_title("Valid Loss (moving-average, window=5)")
+    axes[1].plot(xb, lb_s, color="#4C72B0", linewidth=1.8)
+    axes[1].plot(xu, lu_s, color="#55A868", linewidth=1.8)
+    axes[1].set_title("Valid Loss (moving-average, window=15)")
     axes[1].set_xlabel("num_updates")
     axes[1].set_ylabel("loss")
-    axes[1].legend(fontsize=8)
     _save(fig, out_dir / "shipsear_finetune_curves.png")
 
 
