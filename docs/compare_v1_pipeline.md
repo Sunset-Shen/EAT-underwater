@@ -92,3 +92,20 @@ bash /hy-tmp/eat_work/EAT/scripts/finetuning_DEEPSHIP_UTEAT.sh \
 DEEP_UT_CKPT_OVERRIDE=/hy-tmp/exp/eat/runs/deepship_uteat_8k/checkpoint_best.pt \
 bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_compare_v1.sh 0 8 4000
 ```
+
+## ShipsEar 4.3.3 主实验数据导出与绘图
+```bash
+bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_shipsear_main_analysis.sh
+```
+
+默认输入：
+- baseline ckpt: `/hy-tmp/exp/eat/runs/shipsear_baseline/checkpoint_best.pt`
+- UT-EAT ckpt: `/hy-tmp/exp/eat/runs/shipsear_uteat/checkpoint_best.pt`
+- compare 主表: `/hy-tmp/exp/eat/results/compare_v1/summary/compare_main.csv`
+- pretrain 日志: `/hy-tmp/exp/eat/results/compare_v1/shipsear_formal_pretrain_2026-03-31_164952.log`
+- baseline finetune 日志: `/hy-tmp/exp/eat/runs/shipsear_baseline/train.log`
+- UT-EAT finetune 日志: `/hy-tmp/exp/eat/results/compare_v1/shipsear_uteat_finetune_2026-04-01_005407.log`
+
+默认输出：
+- 数据: `/hy-tmp/exp/eat/results/compare_v1/shipsear/analysis`
+- 图: `/hy-tmp/exp/eat/results/compare_v1/figures`
