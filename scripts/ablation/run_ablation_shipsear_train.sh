@@ -18,16 +18,21 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-max_split_size_mb:128
 
 run_pretrain() {
   local variant="$1"
-  local config_name="$2"
+  local physical_loss_weight="$2"
+  local mask_strategy="$3"
   local run_root="/hy-tmp/exp/eat/runs/ablation_shipsear_${variant}_pretrain"
   mkdir -p "${run_root}"
   cd "${FAIRSEQ_ROOT}"
   python fairseq_cli/hydra_train.py \
     --config-dir "${EAT_ROOT}/config" \
-    --config-name "ablation/${config_name}" \
+    --config-name "pretraining_shipsear_uteat_formal" \
     common.user_dir="${EAT_ROOT}" \
     task.data="${MANIFEST_DIR}" \
     checkpoint.save_dir="${run_root}" \
+    common.tensorboard_logdir="/hy-tmp/exp/eat/logs/ablation_shipsear_${variant}_pretrain/tb" \
+    model.backbone_variant=uteat \
+    model.physical_loss_weight="${physical_loss_weight}" \
+    model.modalities.image.mask_strategy="${mask_strategy}" \
     optimization.max_update="${PRETRAIN_MAX_UPDATE}" \
     dataset.batch_size="${BATCH_SIZE_PRETRAIN}" \
     optimization.update_freq="[${PRETRAIN_UPDATE_FREQ}]" \
@@ -54,19 +59,19 @@ run_finetune() {
 }
 
 # UT-backbone only
-run_pretrain "ut_backbone" "pretraining_shipsear_ablation_ut_backbone"
+run_pretrain "ut_backbone" "0.0" "baseline"
 run_finetune "ut_backbone"
 
 # UT-backbone + mask
-run_pretrain "ut_mask" "pretraining_shipsear_ablation_ut_mask"
+run_pretrain "ut_mask" "0.0" "uteat_phys"
 run_finetune "ut_mask"
 
 # UT-backbone + loss
-run_pretrain "ut_loss" "pretraining_shipsear_ablation_ut_loss"
+run_pretrain "ut_loss" "0.2" "baseline"
 run_finetune "ut_loss"
 
 # UT-EAT full
-run_pretrain "ut_full" "pretraining_shipsear_ablation_ut_full"
+run_pretrain "ut_full" "0.2" "uteat_phys"
 run_finetune "ut_full"
 
 echo "[DONE] ablation shipsear training finished"
