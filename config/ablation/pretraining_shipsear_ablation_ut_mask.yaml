@@ -1,7 +1,7 @@
 # @package _group_
 
 defaults:
-  - pretraining_shipsear_uteat_formal
+  - /pretraining_shipsear_uteat_formal
 
 common:
   tensorboard_logdir: /hy-tmp/exp/eat/logs/ablation_shipsear_ut_mask_pretrain/tb

@@ -23,8 +23,8 @@ run_pretrain() {
   mkdir -p "${run_root}"
   cd "${FAIRSEQ_ROOT}"
   python fairseq_cli/hydra_train.py \
-    --config-dir "${EAT_ROOT}/config/ablation" \
-    --config-name "${config_name}" \
+    --config-dir "${EAT_ROOT}/config" \
+    --config-name "ablation/${config_name}" \
     common.user_dir="${EAT_ROOT}" \
     task.data="${MANIFEST_DIR}" \
     checkpoint.save_dir="${run_root}" \
