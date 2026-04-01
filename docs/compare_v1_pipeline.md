@@ -81,3 +81,14 @@ bash /hy-tmp/eat_work/EAT/scripts/finetuning_DEEPSHIP_UTEAT.sh 0 8 6 4000
 - DeepShip finetune: `/hy-tmp/exp/eat/runs/deepship_uteat/checkpoint_best.pt`（或 `checkpoint_last.pt`）
 
 若不存在，脚本会在对应目录写入 `retrain_required.txt`，给出最小重跑命令。
+
+## DeepShip UT-EAT 8000-step 最小追加实验（不覆盖 4000-step）
+```bash
+# 独立目录启动 8000-step（推荐从 formal pretrain 干净重启）
+bash /hy-tmp/eat_work/EAT/scripts/finetuning_DEEPSHIP_UTEAT.sh \
+  0 8 6 8000 1 /hy-tmp/exp/eat/runs/deepship_uteat_8k
+
+# 用 compare_v1 复用评测/profile/summary，但只覆盖 deepship/ut_eat 输入 checkpoint
+DEEP_UT_CKPT_OVERRIDE=/hy-tmp/exp/eat/runs/deepship_uteat_8k/checkpoint_best.pt \
+bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_compare_v1.sh 0 8 4000
+```

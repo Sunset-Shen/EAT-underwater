@@ -1,5 +1,7 @@
 #!/bin/bash
 set -euo pipefail
+# Usage:
+#   bash scripts/finetuning_DEEPSHIP_UTEAT.sh [GPU_ID] [BATCH_SIZE] [UPDATE_FREQ] [MAX_UPDATE] [FRESH_START] [RUN_ROOT]
 GPU_ID="${1:-0}"
 BATCH_SIZE="${2:-8}"
 UPDATE_FREQ="${3:-6}"
@@ -8,7 +10,8 @@ FRESH_START="${5:-1}"
 EAT_ROOT="/hy-tmp/eat_work/EAT"
 FAIRSEQ_ROOT="/hy-tmp/eat_work/fairseq"
 MANIFEST_DIR="/hy-tmp/exp/eat/manifests/deepship"
-RUN_ROOT="/hy-tmp/exp/eat/runs/deepship_uteat"
+RUN_ROOT_DEFAULT="/hy-tmp/exp/eat/runs/deepship_uteat"
+RUN_ROOT="${6:-${RUN_ROOT_DEFAULT}}"
 FORMAL_PRETRAIN_CKPT="/hy-tmp/exp/eat/runs/deepship_uteat_formal_pretrain/checkpoint_last.pt"
 LEGACY_PRETRAIN_CKPT="/hy-tmp/exp/eat/runs/deepship_uteat_pretrain/checkpoint_last.pt"
 
