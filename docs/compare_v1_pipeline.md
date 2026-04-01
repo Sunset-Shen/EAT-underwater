@@ -128,3 +128,17 @@ bash /hy-tmp/eat_work/EAT/scripts/compare_v1/run_lightweighting_analysis.sh
   - `inference_efficiency_comparison.png/.pdf`
   - `performance_complexity_tradeoff.png/.pdf`
   - `lightweighting_gain_summary.png/.pdf`
+
+## 4.3.5 ShipsEar 消融实验
+```bash
+# 仅训练（pretrain 10000 + finetune 4000）
+bash /hy-tmp/eat_work/EAT/scripts/ablation/run_ablation_shipsear_train.sh 0 8 8 2 6 10000 4000
+
+# 仅汇总与绘图（复用已有checkpoint）
+bash /hy-tmp/eat_work/EAT/scripts/ablation/run_ablation_shipsear_summary.sh
+```
+
+主要输出：
+- `/hy-tmp/exp/eat/runs/ablation_shipsear_*_{pretrain,finetune}`（各变体训练输出）
+- `/hy-tmp/exp/eat/results/ablation_shipsear`（ablation_main/delta 表）
+- `/hy-tmp/exp/eat/results/compare_v1/figures`（ablation 图）
