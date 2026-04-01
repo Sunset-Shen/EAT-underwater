@@ -2,12 +2,13 @@
 set -euo pipefail
 
 # Usage (example):
-#   bash scripts/finetuning_SHIPSEAR.sh 0 8 6
-# args: GPU_ID BATCH_SIZE UPDATE_FREQ
+#   bash scripts/finetuning_SHIPSEAR.sh 0 8 6 4000
+# args: GPU_ID BATCH_SIZE UPDATE_FREQ MAX_UPDATE
 
 GPU_ID="${1:-0}"
 BATCH_SIZE="${2:-8}"
 UPDATE_FREQ="${3:-6}"
+MAX_UPDATE="${4:-4000}"
 
 EAT_ROOT="/hy-tmp/eat_work/EAT"
 FAIRSEQ_ROOT="/hy-tmp/eat_work/fairseq"
@@ -42,7 +43,7 @@ python fairseq_cli/hydra_train.py \
     task.esc50_eval=true \
     task.roll_aug=true \
     task.noise=false \
-    optimization.max_update=8000 \
+    optimization.max_update="${MAX_UPDATE}" \
     optimization.lr=[0.00005] \
     optimizer.groups.default.lr_float=0.00005 \
     optimizer.groups.default.lr_scheduler.warmup_updates=800 \
