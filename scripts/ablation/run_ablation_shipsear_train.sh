@@ -16,13 +16,32 @@ MANIFEST_DIR="${MANIFEST_DIR:-/hy-tmp/exp/eat/manifests/shipsear}"
 export CUDA_VISIBLE_DEVICES="${GPU_ID}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-max_split_size_mb:128}"
 
+can_continue_after_pretrain_failure() {
+  local variant="$1"
+  local run_root="/hy-tmp/exp/eat/runs/ablation_shipsear_${variant}_pretrain"
+  local ckpt="${run_root}/checkpoint_last.pt"
+  local launcher_log="${run_root}/launcher.log"
+
+  if [[ ! -f "${ckpt}" ]]; then
+    return 1
+  fi
+
+  if [[ -f "${launcher_log}" ]] && grep -q "ZeroDivisionError: division by zero" "${launcher_log}"; then
+    return 0
+  fi
+
+  return 1
+}
+
 run_pretrain() {
   local variant="$1"
   local physical_loss_weight="$2"
   local mask_strategy="$3"
   local run_root="/hy-tmp/exp/eat/runs/ablation_shipsear_${variant}_pretrain"
+  local launcher_log="${run_root}/launcher.log"
   mkdir -p "${run_root}"
   cd "${FAIRSEQ_ROOT}"
+  set +e
   python fairseq_cli/hydra_train.py \
     --config-dir "${EAT_ROOT}/config" \
     --config-name "pretraining_shipsear_uteat_formal" \
@@ -36,14 +55,31 @@ run_pretrain() {
     optimization.max_update="${PRETRAIN_MAX_UPDATE}" \
     dataset.batch_size="${BATCH_SIZE_PRETRAIN}" \
     optimization.update_freq="[${PRETRAIN_UPDATE_FREQ}]" \
-    common.log_file="${run_root}/train.log"
+    common.log_file="${run_root}/train.log" \
+    2>&1 | tee -a "${launcher_log}"
+  local train_exit_code="${PIPESTATUS[0]}"
+  set -e
+
+  if [[ "${train_exit_code}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if can_continue_after_pretrain_failure "${variant}"; then
+    echo "[WARN] ${variant} pretrain exited non-zero (${train_exit_code}) but checkpoint_last.pt exists and ZeroDivisionError was detected; continuing to finetune."
+    return 0
+  fi
+
+  echo "[ERROR] ${variant} pretrain failed with exit code ${train_exit_code} and is not a known tail failure. Stopping."
+  return "${train_exit_code}"
 }
 
 run_finetune() {
   local variant="$1"
   local pretrain_ckpt="/hy-tmp/exp/eat/runs/ablation_shipsear_${variant}_pretrain/checkpoint_last.pt"
   local run_root="/hy-tmp/exp/eat/runs/ablation_shipsear_${variant}_finetune"
+  local log_file="${run_root}/train.log"
   mkdir -p "${run_root}"
+  mkdir -p "$(dirname "${log_file}")"
   cd "${FAIRSEQ_ROOT}"
   python fairseq_cli/hydra_train.py \
     --config-dir "${EAT_ROOT}/config" \
@@ -55,23 +91,28 @@ run_finetune() {
     optimization.max_update="${FINETUNE_MAX_UPDATE}" \
     dataset.batch_size="${BATCH_SIZE_FINETUNE}" \
     optimization.update_freq="[${FINETUNE_UPDATE_FREQ}]" \
-    common.log_file="${run_root}/train.log"
+    common.log_file="${log_file}"
+}
+
+run_variant() {
+  local variant="$1"
+  local physical_loss_weight="$2"
+  local mask_strategy="$3"
+
+  run_pretrain "${variant}" "${physical_loss_weight}" "${mask_strategy}"
+  run_finetune "${variant}"
 }
 
 # UT-backbone only
-run_pretrain "ut_backbone" "0.0" "baseline"
-run_finetune "ut_backbone"
+run_variant "ut_backbone" "0.0" "baseline"
 
 # UT-backbone + mask
-run_pretrain "ut_mask" "0.0" "uteat_phys"
-run_finetune "ut_mask"
+run_variant "ut_mask" "0.0" "uteat_phys"
 
 # UT-backbone + loss
-run_pretrain "ut_loss" "0.2" "baseline"
-run_finetune "ut_loss"
+run_variant "ut_loss" "0.2" "baseline"
 
 # UT-EAT full
-run_pretrain "ut_full" "0.2" "uteat_phys"
-run_finetune "ut_full"
+run_variant "ut_full" "0.2" "uteat_phys"
 
 echo "[DONE] ablation shipsear training finished"
